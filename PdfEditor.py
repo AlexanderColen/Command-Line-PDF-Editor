@@ -1,4 +1,6 @@
-from PyPDF2 import PdfFileReader, PdfFileWriter
+from os import listdir
+from os.path import isfile, join
+from PyPDF2 import PdfReader, PdfWriter
 from typing import List
 import sys
 
@@ -61,14 +63,14 @@ def extract_metadata(arguments: List):
         try:
             print('Attempting to extract PDF metadata...')
             if not raw_path.endswith('.pdf'):
-                pdf_path = raw_path + '.pdf'
+                pdf_path = f'{raw_path}.pdf'
             else:
                 pdf_path = raw_path
 
             with open(pdf_path, 'rb') as f:
-                pdf_reader: PdfFileReader = PdfFileReader(f)
+                pdf_reader: PdfReader = PdfReader(f)
                 information = pdf_reader.getDocumentInfo()
-                pages = pdf_reader.getNumPages()
+                pages = len(pdf_reader.pages)
 
             txt = f"Information about {pdf_path}: \n" \
                 f"  Author: {information.author}\n" \
@@ -91,28 +93,28 @@ def merge_pdf(arguments: List):
     """
     while True:
         if len(arguments) >= 1:
-            if input(f'\nThe following files are in currently in the list: {arguments}\n\n'
-                     f'Would you like to add another file? (y/n)\n'
+            if input(f'\nThe following files/directories are in currently in the list: {arguments}\n\n'
+                     f'Would you like to add another file/directory? (y/n)\n'
                      f'>>>').lower() not in confirmation:
                 break
 
-        file: str = input('\nEnter a filename to merge.\nTip: Pressing tab auto-completes the filename.\n>>>')
+        file: str = input('\nEnter a filename/directory to merge.\n>>>')
         if file:
             if file in abort_commands:
                 return
             arguments.append(file)
         else:
-            print('Please enter a filename.')
+            print('Please enter a filename/directory.')
 
     if len(arguments) == 0:
         print('Merging can only be done for one or more files.')
         return
 
-    pdf_writer: PdfFileWriter = PdfFileWriter()
+    pdf_writer: PdfWriter = PdfWriter()
     files: List[str] = arguments
 
     # Define output filename ending in .pdf
-    output: str = input('Enter filename for output:\n>>> ')
+    output: str = input('Enter filename/directory for output:\n>>> ')
     print('Attempting to merge PDF files...')
     if not output:
         output = 'merged.pdf'
@@ -121,15 +123,30 @@ def merge_pdf(arguments: List):
 
     all_files_exist: bool = True
     for f in files:
+        is_directory: bool = False
+
         if not f.endswith('.pdf'):
-            f += '.pdf'
-        try:
-            pdf_reader: PdfFileReader = PdfFileReader(f)
-            for page in range(pdf_reader.getNumPages()):
-                pdf_writer.addPage(pdf_reader.getPage(page))
-        except FileNotFoundError:
-            print(f"File '{f}' not found. Double check if the file exists in the specified location.")
-            all_files_exist = False
+            is_dir_input: str = input(f'Is {f} a directory?:\n>>> ')
+
+            if is_dir_input.lower() in confirmation:
+                is_directory = True
+                if not f.endswith('\\'):
+                    f += '\\'
+            else:
+                f += '.pdf'
+
+        to_merge = [f]
+        if is_directory:
+            to_merge = [f'{f}{merge_file}' for merge_file in listdir(f) if isfile(join(f, merge_file))]
+
+        for merge_file in to_merge:
+            try:
+                pdf_reader: PdfReader = PdfReader(merge_file)
+                for page in range(len(pdf_reader.pages)):
+                    pdf_writer.add_page(pdf_reader.pages[page])
+            except FileNotFoundError:
+                print(f"File '{merge_file}' not found. Double check if the file/directory exists in the specified location.")
+                all_files_exist = False
 
     if not all_files_exist:
         if input(f'\nWould you like to merge the existing files anyway? (y/n)\n').lower() not in confirmation:
@@ -166,8 +183,8 @@ def split_pdf(arguments: List):
 
             print('Attempting to split PDF file(s)...')
             # Try to read the file first to check if it exists.
-            pdf_reader: PdfFileReader = PdfFileReader(pdf_path)
-            pdf_length: int = pdf_reader.getNumPages()
+            pdf_reader: PdfReader = PdfReader(pdf_path)
+            pdf_length: int = len(pdf_reader.pages)
 
             # Ask what page the user wants to split the PDF.
             pages: [] = [int(input('After which page do you want to split this document?\n>>> ')) - 1]
@@ -183,20 +200,20 @@ def split_pdf(arguments: List):
                     pages.append(pdf_length - 1)
                     break
 
-            pdf_writer: PdfFileWriter = PdfFileWriter()
+            pdf_writer: PdfWriter = PdfWriter()
             split: int = 1
             min_page: int = -1
             for page in range(pdf_length):
                 if min_page == -1:
                     min_page = page + 1
-                pdf_writer.addPage(pdf_reader.getPage(page))
+                pdf_writer.add_page(pdf_reader.pages[page])
 
                 if page in pages:
                     with open(f'split{split}.pdf', 'wb') as out:
                         pdf_writer.write(out)
                         print(f"Split pages {min_page}-{page + 1} into 'split{split}'.")
                     # Re-initiate the writer to empty the pages and increment the split counter.
-                    pdf_writer = PdfFileWriter()
+                    pdf_writer = PdfWriter()
                     split += 1
         except FileNotFoundError:
             print(f"File '{pdf_path}' not found. Double check if the file exists in the specified location.")
@@ -206,7 +223,7 @@ def split_pdf(arguments: List):
 
 
 if __name__ == '__main__':
-    print(f'{"="*48}\nCommand Line PDF Editor - © Alexander Colen 2020\n{"="*48}')
+    print(f'{"="*48}\nCommand Line PDF Editor - © Alexander Colen 2024\n{"="*48}')
     abort_commands = ['"quit"', 'quit', 'q', 'exit']
     confirmation = ['yes', 'ye', 'y']
     handle_command(args=sys.argv)
